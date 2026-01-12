@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Heart } from "lucide-react";
 
@@ -24,8 +24,88 @@ const photos: Photo[] = [
   { src: memory6, alt: "Cooking together", caption: "Cooking up love" },
 ];
 
+// Optimized Image component with lazy loading and smooth transitions
+const OptimizedImage = ({
+  src,
+  alt,
+  className,
+  onLoad
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  onLoad?: () => void;
+}) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isInView, setIsInView] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "100px" } // Start loading 100px before entering viewport
+    );
+
+    if (imgRef.current) {
+      observer.observe(imgRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  const handleLoad = () => {
+    setIsLoaded(true);
+    onLoad?.();
+  };
+
+  return (
+    <div ref={imgRef} className="relative w-full h-full">
+      {/* Blur placeholder */}
+      <div
+        className={`absolute inset-0 bg-gradient-to-br from-rose/20 to-blush/20 transition-opacity duration-500 ${isLoaded ? "opacity-0" : "opacity-100"
+          }`}
+      />
+      {isInView && (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={handleLoad}
+          className={`${className} transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"
+            }`}
+          style={{
+            willChange: "transform",
+            contentVisibility: "auto"
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// Preload images for lightbox
+const preloadImage = (src: string) => {
+  const img = new Image();
+  img.src = src;
+};
+
 const PhotoGallery = () => {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+
+  // Preload all images on mount for smoother lightbox experience
+  useEffect(() => {
+    photos.forEach((photo) => preloadImage(photo.src));
+  }, []);
+
+  const handlePhotoClick = (photo: Photo) => {
+    setSelectedPhoto(photo);
+  };
 
   return (
     <section className="py-24 px-4 bg-background">
@@ -45,7 +125,7 @@ const PhotoGallery = () => {
           </p>
         </motion.div>
 
-        {/* Photo Grid */}
+        {/* Photo Grid with GPU-accelerated transforms */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
           {photos.map((photo, index) => (
             <motion.div
@@ -56,12 +136,16 @@ const PhotoGallery = () => {
               viewport={{ once: true, margin: "-50px" }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
               whileHover={{ scale: 1.02 }}
-              onClick={() => setSelectedPhoto(photo)}
+              onClick={() => handlePhotoClick(photo)}
+              style={{
+                transform: "translateZ(0)", // Force GPU layer
+                backfaceVisibility: "hidden"
+              }}
             >
-              <img
+              <OptimizedImage
                 src={photo.src}
                 alt={photo.alt}
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-110"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-charcoal/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
@@ -80,7 +164,7 @@ const PhotoGallery = () => {
         </div>
       </div>
 
-      {/* Lightbox */}
+      {/* Lightbox with optimized rendering */}
       <AnimatePresence>
         {selectedPhoto && (
           <motion.div
@@ -97,11 +181,19 @@ const PhotoGallery = () => {
               exit={{ scale: 0.9, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
               onClick={(e) => e.stopPropagation()}
+              style={{
+                transform: "translateZ(0)",
+                willChange: "transform, opacity"
+              }}
             >
               <img
                 src={selectedPhoto.src}
                 alt={selectedPhoto.alt}
                 className="w-full h-full object-contain rounded-lg shadow-romantic"
+                style={{
+                  willChange: "auto",
+                  contentVisibility: "auto"
+                }}
               />
               <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-charcoal/80 to-transparent rounded-b-lg">
                 <p className="font-serif text-primary-foreground text-2xl text-center">
